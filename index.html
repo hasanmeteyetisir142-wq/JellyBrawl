@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jelly Brawl</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#111827;color:#fff;font:16px system-ui;overflow:hidden}
+#game{display:block;width:100vw;height:100vh}
+#menu{position:fixed;inset:0;display:grid;place-items:center;background:linear-gradient(135deg,#111827dd,#312e81cc);z-index:5}
+.panel{width:min(92vw,440px);padding:28px;border:1px solid #ffffff30;border-radius:24px;background:#101827ee;box-shadow:0 20px 80px #0008;text-align:center}
+h1{font-size:44px;margin:0 0 8px;color:#a5f3fc;text-shadow:0 4px 0 #155e75}
+p{color:#cbd5e1}.buttons{display:grid;gap:12px;margin-top:20px}
+button{border:0;border-radius:14px;padding:14px 18px;font-weight:800;font-size:16px;cursor:pointer;background:#22d3ee;color:#082f49}
+button.secondary{background:#334155;color:white}
+#hud{position:fixed;top:14px;left:14px;right:14px;display:none;justify-content:space-between;pointer-events:none;text-shadow:0 2px 5px #000;font-weight:700}
+#hint{position:fixed;bottom:14px;left:0;right:0;text-align:center;color:#e2e8f0;text-shadow:0 2px 5px #000;display:none;pointer-events:none}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="menu"><div class="panel"><h1>JELLY BRAWL</h1><p>Yuvarlak, zıpır ve sakar dövüşçüler arenası!</p><p>WASD: hareket · SPACE: zıpla · E: yumruk</p><p>Fare: kamerayı / kafanı çevir · Oyuna girince ekrana tıkla</p><div class="buttons">
+<button id="play">OYNA</button><button class="secondary" id="download">OYUNU İNDİR</button>
+</div><p style="font-size:12px">Tek oyunculu prototip · Botlara karşı oyna</p></div></div>
+<div id="hud"><span id="score">Rakipler: 3</span><span>WASD · SPACE · E</span></div>
+<div id="hint">Rakipleri arenadan aşağı düşür!</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+(()=>{
+const canvas=document.querySelector('#game'), menu=document.querySelector('#menu'), hud=document.querySelector('#hud'), hint=document.querySelector('#hint');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true}); renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(innerWidth,innerHeight); renderer.shadowMap.enabled=true;
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0x91d8e8); scene.fog=new THREE.Fog(0x91d8e8,22,48);
+const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,100); camera.position.set(0,9,14);
+scene.add(new THREE.HemisphereLight(0xffffff,0x526080,2));
+const sun=new THREE.DirectionalLight(0xffffff,2.2); sun.position.set(-5,12,7); sun.castShadow=true; scene.add(sun);
+const floor=new THREE.Mesh(new THREE.CylinderGeometry(8.5,8.5,.7,64),new THREE.MeshStandardMaterial({color:0x64748b,roughness:.8})); floor.position.y=-.55; floor.receiveShadow=true; scene.add(floor);
+const ring=new THREE.Mesh(new THREE.TorusGeometry(8.1,.18,12,80),new THREE.MeshStandardMaterial({color:0xfde68a,metalness:.3,roughness:.35})); ring.rotation.x=Math.PI/2; ring.position.y=-.12; scene.add(ring);
+const keys={}; addEventListener('keydown',e=>keys[e.code]=true); addEventListener('keyup',e=>keys[e.code]=false);
+let actors=[],playing=false,score=0,player; let cameraYaw=0, cameraPitch=0.38, mouseLocked=false;
+canvas.addEventListener('click',()=>{if(playing) canvas.requestPointerLock?.();});
+document.addEventListener('pointerlockchange',()=>{mouseLocked=document.pointerLockElement===canvas;});
+document.addEventListener('mousemove',e=>{if(!mouseLocked||!playing)return;cameraYaw-=e.movementX*0.0028;cameraPitch=Math.max(-0.15,Math.min(1.05,cameraPitch+e.movementY*0.0022));});
+function makeActor(color,x,z,isPlayer=false){
+ const group=new THREE.Group(); scene.add(group); group.position.set(x,.3,z);
+ const mat=new THREE.MeshPhysicalMaterial({color,roughness:.22,metalness:.02,clearcoat:1,clearcoatRoughness:.12});
+ const body=new THREE.Mesh(new THREE.SphereGeometry(.68,32,24),mat); body.scale.set(.9,1.05,.72); body.castShadow=true; group.add(body);
+ const head=new THREE.Mesh(new THREE.SphereGeometry(.48,32,24),mat); head.position.y=.82; head.castShadow=true; group.add(head);
+ for(let s of [-1,1]){let eye=new THREE.Mesh(new THREE.SphereGeometry(.075,16,12),new THREE.MeshStandardMaterial({color:0x111827}));eye.position.set(s*.18,.9,.42);group.add(eye);
+ let arm=new THREE.Mesh(new THREE.SphereGeometry(.24,20,16),mat);arm.position.set(s*.72,.25,0);arm.scale.set(.7,1.3,.8);group.add(arm);}
+ const feet=new THREE.Mesh(new THREE.SphereGeometry(.24,20,16),mat);feet.position.set(0,-.42,.05);feet.scale.set(1.3,.6,1.4);group.add(feet);
+ const a={group,vel:new THREE.Vector3(),isPlayer,alive:true,hit:0,phase:Math.random()*6}; actors.push(a); return a;
+}
+function reset(){actors.forEach(a=>scene.remove(a.group));actors=[];score=0;player=makeActor(0x22d3ee,0,3,true);makeActor(0xfb7185,-3,-2);makeActor(0xa78bfa,3,-2);makeActor(0xfbbf24,0,-4);}
+function start(){reset();playing=true;menu.style.display='none';hud.style.display='flex';hint.style.display='block';document.querySelector('#score').textContent='Rakipler: 3';}
+document.querySelector('#play').onclick=start;
+document.querySelector('#download').onclick=()=>{const blob=new Blob([document.documentElement.outerHTML],{type:'text/html'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='Jelly-Brawl.html';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);};
+function update(dt,t){
+ if(!playing)return;
+ actors.forEach(a=>{if(!a.alive)return;
+  if(a.isPlayer){let dx=(keys.KeyD?1:0)-(keys.KeyA?1:0), dz=(keys.KeyS?1:0)-(keys.KeyW?1:0);let v=new THREE.Vector3(dx,0,dz);if(v.length()>0)v.normalize();a.vel.x+=v.x*17*dt;a.vel.z+=v.z*17*dt;if(keys.Space&&a.group.position.y<.42)a.vel.y=7.5;
+   if(keys.KeyE&&!a.hit){a.hit=.45;actors.forEach(b=>{if(b!==a&&b.alive&&b.group.position.distanceTo(a.group.position)<2){let d=b.group.position.clone().sub(a.group.position).setY(0).normalize();b.vel.add(d.multiplyScalar(8));b.vel.y=3;}});}
+  }else{let d=player.group.position.clone().sub(a.group.position).setY(0);if(d.length()>0.1){d.normalize();a.vel.x+=d.x*4*dt;a.vel.z+=d.z*4*dt;}if(Math.random()<.006){a.vel.y=4;}}
+  a.hit=Math.max(0,a.hit-dt);a.vel.x*=Math.pow(.12,dt);a.vel.z*=Math.pow(.12,dt);a.vel.y-=17*dt;
+  a.group.position.addScaledVector(a.vel,dt);if(a.group.position.y<.3){a.group.position.y=.3;a.vel.y=0;}
+  a.group.rotation.z=Math.sin(t*5+a.phase)*.08+a.vel.x*.035;a.group.rotation.x=Math.cos(t*4+a.phase)*.06-a.vel.z*.025;
+  let scale=1+Math.sin(t*7+a.phase)*.025;a.group.scale.set(scale,1/scale,scale);
+  if(Math.hypot(a.group.position.x,a.group.position.z)>9.5||a.group.position.y< -3){a.alive=false;scene.remove(a.group);if(a.isPlayer){playing=false;document.exitPointerLock?.();menu.style.display='grid';document.querySelector('#play').textContent='TEKRAR OYNA';hud.style.display='none';hint.style.display='none';}else{score++;document.querySelector('#score').textContent='Rakipler: '+(3-score);}}
+ });
+ if(actors.filter(a=>!a.isPlayer&&a.alive).length===0){playing=false;document.exitPointerLock?.();menu.style.display='grid';document.querySelector('#play').textContent='TEKRAR OYNA';}
+ const target=player&&player.alive?player.group.position:new THREE.Vector3();
+ const distance=14, horizontal=Math.cos(cameraPitch)*distance;
+ const desired=new THREE.Vector3(target.x+Math.sin(cameraYaw)*horizontal, target.y+3+Math.sin(cameraPitch)*distance, target.z+Math.cos(cameraYaw)*horizontal);
+ camera.position.lerp(desired,.12);camera.lookAt(target.x,target.y+.35,target.z);
+}
+let last=0;function loop(ms){requestAnimationFrame(loop);let dt=Math.min((ms-last)/1000,.04);last=ms;update(dt,ms/1000);renderer.render(scene,camera);}loop(0);
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+})();
+</script>
+</body></html>
