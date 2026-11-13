@@ -33,8 +33,20 @@ h1{font-size:clamp(58px,8vw,100px);line-height:.83;letter-spacing:-5px;margin:17
 <div id="toast"></div>
 <div id="finish"><div class="panel modal"><div class="logo">🏁 YARIŞ TAMAMLANDI</div><h2 id="finishTitle">HARİKA!</h2><p id="finishText">Parkuru tamamladın.</p><div class="row" style="justify-content:center"><button class="primary" id="again">TEKRAR OYNA</button><button class="soft" id="exit">ANA MENÜ</button></div></div></div>
 <div id="pause"><div class="panel modal"><h2>DURAKLATILDI</h2><p>Yarışa dönmeye hazır mısın?</p><button class="primary" id="resume">DEVAM ET</button></div></div>
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script><script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
+const loadFallback = (urls) => new Promise((resolve,reject) => {
+  const next = (i) => {
+    if (i >= urls.length) return reject(new Error('Kütüphane yüklenemedi'));
+    const s = document.createElement('script');
+    s.src = urls[i]; s.onload = resolve; s.onerror = () => { s.remove(); next(i+1); };
+    document.head.appendChild(s);
+  };
+  next(0);
+});
+Promise.all([
+  window.THREE ? Promise.resolve() : loadFallback(['https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js','https://unpkg.com/three@0.160.0/build/three.min.js','https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js']),
+  window.Peer ? Promise.resolve() : loadFallback(['https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js','https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js'])
+]).then(() => {
 (()=>{'use strict';
 const $=s=>document.querySelector(s),canvas=$('#scene');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;
@@ -99,4 +111,9 @@ $('#create').onclick=createRoom;$('#join').onclick=joinRoom;$('#again').onclick=
 $('#scene').addEventListener('pointerdown',()=>{if(running&&paused===false&&document.pointerLockElement!==canvas&&innerWidth>760)canvas.requestPointerLock?.()});document.addEventListener('mousemove',e=>{if(document.pointerLockElement===canvas&&running&&!paused){playerGroup.rotation.y-=e.movementX*.001;}});window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2))});
 function render(){renderer.render(scene,camera);requestAnimationFrame(render)}render();
 })();
+}).catch(err => {
+  const status = document.querySelector('#status');
+  if (status) status.textContent = 'Oyun motoru yüklenemedi. Sayfayı yenile ve tekrar dene.';
+  console.error(err);
+});
 </script></body></html>
