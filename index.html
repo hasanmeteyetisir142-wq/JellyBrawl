@@ -106,13 +106,14 @@ const diff={easy:{hp:0.8,damage:.7,speed:.88},normal:{hp:1,damage:1,speed:1},har
 function sound(freq=220,dur=.08,type='sine',vol=.035){try{soundCtx=soundCtx||new (window.AudioContext||window.webkitAudioContext)();const o=soundCtx.createOscillator(),g=soundCtx.createGain();o.type=type;o.frequency.setValueAtTime(freq,soundCtx.currentTime);g.gain.setValueAtTime(vol,soundCtx.currentTime);g.gain.exponentialRampToValueAtTime(.001,soundCtx.currentTime+dur);o.connect(g);g.connect(soundCtx.destination);o.start();o.stop(soundCtx.currentTime+dur);}catch(e){}}
 function toast(t){const el=$('#toast');el.textContent=t;el.style.display='block';clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.style.display='none',1700);}
 function makeMaterial(c,rough=.28){return new THREE.MeshPhysicalMaterial({color:c,roughness:rough,metalness:.02,clearcoat:1,clearcoatRoughness:.1});}
+function makeCapsulePart(radius,length,material){const g=new THREE.Group();const shaft=new THREE.Mesh(new THREE.CylinderGeometry(radius,radius,length,16),material);shaft.castShadow=true;g.add(shaft);for(const y of [-length/2,length/2]){const cap=new THREE.Mesh(new THREE.SphereGeometry(radius,16,12),material);cap.position.y=y;cap.castShadow=true;g.add(cap);}return g;}
 function fighter(color,kind='player'){
  const root=new THREE.Group(),bodyMat=makeMaterial(color),dark=mat('#142235',.3),eye=mat('#07111d',.18);
- const torso=new THREE.Mesh(new THREE.CapsuleGeometry(kind==='boss'?.62:.38,kind==='boss'?1.1:.65,6,12),bodyMat);torso.position.y=1.05;torso.castShadow=true;root.add(torso);
+ const torso=makeCapsulePart(kind==='boss'?.62:.38,kind==='boss'?1.1:.65,bodyMat);torso.position.y=1.05;root.add(torso);
  const head=new THREE.Mesh(new THREE.SphereGeometry(kind==='boss'?.48:.34,24,18),bodyMat);head.position.y=1.85;head.castShadow=true;root.add(head);
  for(const s of [-1,1]){const e=new THREE.Mesh(new THREE.SphereGeometry(.052,12,8),eye);e.position.set(s*.12,1.9,.29);root.add(e);}
  const limbs=[];
- for(const s of [-1,1]){const arm=new THREE.Mesh(new THREE.CapsuleGeometry(kind==='boss'?.19:.12,.48,4,8),bodyMat);arm.position.set(s*(kind==='boss'?.68:.48),1.12,0);arm.rotation.z=s*.18;arm.castShadow=true;root.add(arm);limbs.push(arm);const leg=new THREE.Mesh(new THREE.CapsuleGeometry(kind==='boss'?.2:.13,.46,4,8),dark);leg.position.set(s*.22,.38,0);leg.castShadow=true;root.add(leg);limbs.push(leg);}
+ for(const s of [-1,1]){const arm=makeCapsulePart(kind==='boss'?.19:.12,.48,bodyMat);arm.position.set(s*(kind==='boss'?.68:.48),1.12,0);arm.rotation.z=s*.18;root.add(arm);limbs.push(arm);const leg=makeCapsulePart(kind==='boss'?.2:.13,.46,dark);leg.position.set(s*.22,.38,0);root.add(leg);limbs.push(leg);}
  root.userData={torso,head,limbs,kind,walk:Math.random()*6};return root;
 }
 function createPlayer(){const m=fighter('#84cc16');m.position.set(0,0,0);arena.add(m);return {mesh:m,hp:100,maxHp:100,speed:6.2,damage:24,heavy:55,range:2.05,attackSpeed:1,armor:0,regen:0,crit:0,lifeSteal:0,stamina:100,invuln:0,vy:0,onGround:true,level:1,xp:0,score:0};}
