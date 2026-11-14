@@ -97,8 +97,60 @@ function randomCode(){return Math.random().toString(36).slice(2,7).toUpperCase()
 function updatePlayers(){const arr=Object.values(players).sort((a,b)=>(a.z-b.z));$('#rank').textContent=(arr.findIndex(p=>p.id===myId)+1)+'.';$('#players').textContent=arr.length+' oyuncu';}
 function pack(){return {id:myId,x:me.x,y:me.y,z:me.z,rot:playerGroup.rotation.y,color:me.color,name:me.name,done:me.done}}
 function broadcast(data){if(host){Object.values(players).forEach(p=>{if(p.id!==myId&&p.conn&&p.conn.open)p.conn.send(data)})}else if(conn&&conn.open)conn.send(data)}
-function createRoom(){$('#home').style.display='grid';$('#start').style.display='none';$('#hud').style.display='none';$('#bottom').style.display='none';$('#topCenter').style.display='none';if(peer)peer.destroy();room=randomCode();host=true;myId='u'+Math.random().toString(36).slice(2,9);me.color=palette[0];myBlob=blob(me.color);playerGroup.clear();playerGroup.add(myBlob);players={[myId]:{...pack(),conn:null}};peer=new Peer('mayhem-race-'+room.toLowerCase());setStatus('Oda açılıyor...');peer.on('open',()=>{peer.on('connection',c=>{c.on('open',()=>{});c.on('data',d=>{if(d.type==='join'){d.player.conn=c;players[d.player.id]=d.player;c.send({type:'init',players:Object.values(players).map(({conn,...p})=>p)});broadcast({type:'joined',player:(()=>{const {conn,...p}=d.player;return p})()});updatePlayers()}else if(d.type==='state'&&players[d.player.id]){Object.assign(players[d.player.id],d.player);broadcast(d)}});c.on('close',()=>{const id=Object.keys(players).find(k=>players[k].conn===c);if(id){delete players[id];broadcast({type:'left',id});updatePlayers()}})});setStatus('Oda hazır! Kodunu arkadaşına gönder. Oyun başlatılana kadar bu ekranda kalacaksın.');$('#start').style.display='block'});peer.on('error',e=>setStatus('Oda kurulamadı: '+e.type));}
-function joinRoom(){const c=$('#joinCode').value.trim().toUpperCase();if(c.length!==5){setStatus('5 karakterli oda kodunu yaz.');return}if(peer)peer.destroy();room=c;host=false;myId='u'+Math.random().toString(36).slice(2,9);me.color=palette[Math.floor(Math.random()*palette.length)];myBlob=blob(me.color);playerGroup.clear();playerGroup.add(myBlob);peer=new Peer();setStatus('Odaya bağlanılıyor...');peer.on('open',()=>{conn=peer.connect('mayhem-race-'+room.toLowerCase(),{reliable:true});conn.on('open',()=>{conn.send({type:'join',player:pack()});setStatus('Odaya bağlandın. Ev sahibi oyunu başlatınca başlayacak.');});conn.on('data',d=>{if(d.type==='init'){players={};d.players.forEach(p=>{players[p.id]=p;if(p.id!==myId)syncRemote(p)});setStatus('Odaya bağlandın. Ev sahibinin oyunu başlatmasını bekle.')}else if(d.type==='start'){startGame()}else if(d.type==='joined'){players[d.player.id]=d.player;syncRemote(d.player)}else if(d.type==='state'){players[d.player.id]=d.player;syncRemote(d.player)}else if(d.type==='left'){delete players[d.id];if(remotes[d.id]){scene.remove(remotes[d.id]);delete remotes[d.id]}}updatePlayers()});conn.on('error',()=>announce('Bağlantı hatası'));conn.on('close',()=>announce('Oda bağlantısı kesildi'))});peer.on('error',e=>setStatus('Oda bulunamadı: '+e.type))}
+async function createRoom(){
+ if(peer)peer.destroy();
+ room=randomCode();host=true;myId='u'+Math.random().toString(36).slice(2,9);selectedMap=0;me.color=palette[0];myBlob=blob(me.color);playerGroup.clear();playerGroup.add(myBlob);players={[myId]:{...pack(),conn:null}};
+ peer=new Peer('mayhem-race-'+room.toLowerCase());setStatus('Oda açılıyor...');
+ peer.on('open',async()=>{
+  peer.on('connection',c=>{
+   c.on('data',d=>{
+    if(d.type==='join'){
+     if(Object.keys(players).length>=8){c.send({type:'full'});c.close();return}
+     d.player.conn=c;players[d.player.id]=d.player;
+     c.send({type:'init',mapId:selectedMap,players:Object.values(players).map(({conn,...p})=>p)});
+     broadcast({type:'joined',player:(()=>{const {conn,...p}=d.player;return p})()});
+     updatePlayers();refreshLobbyUI();
+     db('mayhem_lobbies?room_code=eq.'+room,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({player_count:Object.keys(players).length,updated_at:new Date().toISOString()})}).catch(console.error);
+    }else if(d.type==='state'&&players[d.player.id]){Object.assign(players[d.player.id],d.player);broadcast(d)}
+   });
+   c.on('close',()=>{
+    const id=Object.keys(players).find(k=>players[k].conn===c);
+    if(id){delete players[id];broadcast({type:'left',id});updatePlayers();refreshLobbyUI();db('mayhem_lobbies?room_code=eq.'+room,{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({player_count:Object.keys(players).length,updated_at:new Date().toISOString()})}).catch(console.error)}
+   })
+  });
+  try{
+   await db('mayhem_lobbies',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({room_code:room,host_peer_id:'mayhem-race-'+room.toLowerCase(),map_id:selectedMap,player_count:1,status:'waiting'})});
+   lobbyRow=true;
+  }catch(e){lobbyRow=false;console.error(e)}
+  showLobby();setStatus(lobbyRow?'Oda hazır! Kodunu arkadaşına gönder.':'Oda açıldı; açık oda listesine eklenemedi. Kodu arkadaşına gönder.');
+  refreshPublicLobbies();
+ });
+ peer.on('error',e=>{setStatus('Oda kurulamadı: '+e.type);$('#create').disabled=false});
+}
+function joinRoom(){
+ const c=$('#joinCode').value.trim().toUpperCase();
+ if(c.length!==5){setStatus('5 karakterli oda kodunu yaz.');return}
+ if(peer)peer.destroy();room=c;host=false;myId='u'+Math.random().toString(36).slice(2,9);
+ me.color=palette[Math.floor(Math.random()*palette.length)];myBlob=blob(me.color);playerGroup.clear();playerGroup.add(myBlob);peer=new Peer();setStatus('Odaya bağlanılıyor...');
+ peer.on('open',()=>{
+  conn=peer.connect('mayhem-race-'+room.toLowerCase(),{reliable:true});
+  conn.on('open',()=>{conn.send({type:'join',player:pack()});showLobby();$('#mapSelect').disabled=true;$('#lobbyStart').style.display='none';$('#lobbyStatus').textContent='Ev sahibinin başlatmasını bekle.'});
+  conn.on('data',d=>{
+   if(d.type==='init'){
+    players={};d.players.forEach(p=>{players[p.id]=p;if(p.id!==myId)syncRemote(p)});
+    selectedMap=d.mapId||0;applyMap(selectedMap);$('#mapSelect').value=String(selectedMap);refreshLobbyUI();
+   }else if(d.type==='map'){selectedMap=d.mapId;applyMap(selectedMap);$('#mapSelect').value=String(selectedMap)}
+   else if(d.type==='start'){startGame()}
+   else if(d.type==='full'){setStatus('Bu oda dolu.');exitGame()}
+   else if(d.type==='joined'){players[d.player.id]=d.player;syncRemote(d.player)}
+   else if(d.type==='state'){players[d.player.id]=d.player;syncRemote(d.player)}
+   else if(d.type==='left'){delete players[d.id];if(remotes[d.id]){scene.remove(remotes[d.id]);delete remotes[d.id]}}
+   updatePlayers();refreshLobbyUI()
+  });
+  conn.on('error',()=>setStatus('Bağlantı hatası'));conn.on('close',()=>{if(!running)setStatus('Oda bağlantısı kesildi')});
+ });
+ peer.on('error',e=>{setStatus('Oda bulunamadı: '+e.type);$('#lobby').style.display='none';$('#home').style.display='grid';$('#create').disabled=false})
+}
 function startGame(){players[myId]={...pack(),conn:null};me.x=0;me.y=0;me.z=5;me.vx=0;me.vz=0;me.done=false;elapsed=0;checkpoint=0;finished=false;vy=0;running=true;paused=false;playerGroup.position.set(0,0,5);playerGroup.rotation.set(0,0,0);camera.position.set(0,9,19);camera.lookAt(0,1,-10);$('#home').style.display='none';$('#hud').style.display='flex';$('#bottom').style.display='block';$('#roomLabel').textContent=room;$('#finish').style.display='none';$('#topCenter').style.display='block';last=performance.now();requestAnimationFrame(loop);updatePlayers();setStatus('Oda hazır!')}
 function exitGame(){running=false;if(peer)peer.destroy();peer=null;conn=null;$('#start').style.display='none';setStatus('Bir oda kur veya arkadaşının kodunu gir.');players={};Object.keys(remotes).forEach(id=>scene.remove(remotes[id]));remotes={};$('#hud').style.display='none';$('#bottom').style.display='none';$('#finish').style.display='none';$('#pause').style.display='none';$('#home').style.display='grid'}
 function finish(){if(finished)return;finished=true;me.done=true;$('#finishTitle').textContent='🏆 BİTİŞ!';$('#finishText').textContent='Parkuru '+Math.floor(elapsed)+' saniyede tamamladın!';$('#finish').style.display='grid';broadcast({type:'state',player:pack()})}
