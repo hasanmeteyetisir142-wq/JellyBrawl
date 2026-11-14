@@ -81,7 +81,19 @@ const mapThemes=[{name:'Şeker Sahili',bg:'#a9eaff',ground:'#d6f7ff',pink:'#ff57
 let selectedMap=0,lobbyRefresh=null,lobbyRow=false;
 const SB_URL='https://nmjflyhxwnclorzcwhka.supabase.co',SB_KEY='sb_publishable_i6BMU546FsDRAIx62r13IA_LVFfIHwB';
 async function db(path,options={}){const r=await fetch(SB_URL+'/rest/v1/'+path,{...options,headers:{apikey:SB_KEY,Authorization:'Bearer '+SB_KEY,'Content-Type':'application/json',...(options.headers||{})}});if(!r.ok)throw new Error('Lobi servisi: '+r.status);return r.status===204?null:r.json()}
-function applyMap(id){selectedMap=Math.max(0,Math.min(3,Number(id)||0));const t=mapThemes[selectedMap];scene.background.set(t.bg);scene.fog.color.set(t.bg);Object.entries({ground:t.ground,pink:t.pink,blue:t.blue,yellow:t.yellow,mint:t.mint,purple:t.purple,orange:t.orange}).forEach(([k,v])=>mats[k].color.set(v));$('#topCenter').querySelector('.round').textContent=t.name.toUpperCase()}
+function applyMap(id){selectedMap=Math.max(0,Math.min(3,Number(id)||0));const t=mapThemes[selectedMap];scene.background.set(t.bg);scene.fog.color.set(t.bg);Object.entries({ground:t.ground,pink:t.pink,blue:t.blue,yellow:t.yellow,mint:t.mint,purple:t.purple,orange:t.orange}).forEach(([k,v])=>mats[k].color.set(v));$('#topCenter').querySelector('.round').textContent=t.name.toUpperCase();mapVariantGroups.forEach((g,i)=>g.visible=selectedMap===i+1)}
+const mapVariantGroups=[];
+for(let mapId=1;mapId<=3;mapId++){
+ const group=new THREE.Group();world.add(group);mapVariantGroups.push(group);
+ if(mapId===1){
+  for(let i=0;i<5;i++){const z=-17-i*15;box((i%2?5:-5),.2,z,5,.5,5,mats.orange,group);cylinder(i%2?-5:5,1.2,z,1.1,2.4,mats.pink,group)}
+ }else if(mapId===2){
+  for(let i=0;i<7;i++){const z=-12-i*12;box(Math.sin(i*1.3)*7,.3,z,4,.45,5,mats.blue,group);box(-Math.sin(i*1.3)*7,.3,z-5,3,.45,3,mats.white,group)}
+ }else{
+  for(let i=0;i<6;i++){const z=-15-i*13;box((i%2?6:-6),1.4,z,.8,3,7,mats.purple,group);box(0,.25,z-5,7,.5,4,mats.mint,group)}
+ }
+ group.visible=false;
+}
 function showLobby(){ $('#home').style.display='none';$('#lobby').style.display='grid';$('#lobbyCode').textContent=room;refreshLobbyUI()}
 function refreshLobbyUI(){const n=Object.keys(players).length;$('#lobbyPlayers').textContent=n+' / 8 oyuncu';$('#lobbyState').textContent=n>=2?'Başlamaya hazır':'Oyuncular bekleniyor';$('#lobbyStart').disabled=!host||n<2;$('#lobbyStart').textContent=n<2?'🔒 EN AZ 2 KİŞİ GEREKLİ':'🚀 OYUNU BAŞLAT';$('#lobbyStatus').textContent=n<2?'Başlamak için en az 2 kişi gerekli.':'Herkes hazır! Oyunu başlatabilirsin.'}
 async function refreshPublicLobbies(){try{const rows=await db('mayhem_lobbies?select=room_code,map_id,player_count&status=eq.waiting&order=updated_at.desc&limit=20');const box=$('#publicLobbies');if(!box)return;box.replaceChildren();if(!rows.length){const p=document.createElement('p');p.textContent='Şu anda açık lobi yok. İlk odayı sen kur!';box.append(p);return}rows.forEach(x=>{const item=document.createElement('div');item.className='lobbyItem';const info=document.createElement('div');const code=document.createElement('b');code.textContent=x.room_code;const meta=document.createElement('small');meta.textContent=mapThemes[x.map_id].name+' · '+x.player_count+'/8 oyuncu';info.append(code,meta);const btn=document.createElement('button');btn.className='pink';btn.textContent='KATIL';btn.onclick=()=>{ $('#joinCode').value=x.room_code;joinRoom()};item.append(info,btn);box.append(item)})}catch(e){const box=$('#publicLobbies');if(box){box.replaceChildren();const p=document.createElement('p');p.textContent='Açık lobiler yüklenemedi. Kodla katılmayı dene.';box.append(p)}console.error(e)}}
